@@ -111,7 +111,7 @@ Here I use a Monte Carlo approach to propagating uncertainty by randomly samplin
 ```{r}
 library(isoToolsR)
 source(here("functions", "NUptakeModels.R"))
-source(here("functions", "getIntervals.R"))
+source(here("functions", "predictionIntervals.R"))
 RstN <- 0.003678 # isotope ratio of nitrogen standard
 AFadd <- 0.984 # atom fraction of N15-nitrate tracer
 
@@ -131,7 +131,7 @@ percentTracer <- sapply(deltaNO30, calcPercentTracer, Rst = RstN, AFadd = AFadd)
 NO3add <- matrix(percentTracer, nrow = 3) %*% matrix(NO3Pre, nrow = 1) # Matrix of added NO3 concentrations for each initial nitrate concentration (columns) and each level of enrichment(rows)
 NO30 <- (1+matrix(percentTracer ,nrow = 3)) %*% matrix(NO3Pre, nrow = 1) # Matrix of total NO3 concentration after N15 addition for each initial nitrate concentration (columns) and each level of enrichment(rows)
 N15NO30 <- AFadd * NO3add + RToAtomFrac(RstN) * matrix(rep(NO3Pre, each = length(deltaNO30)), nrow = length(deltaNO30)) # Matrix of total N15-NO3 concentration after N15 addition for each initial nitrate concentration (columns) and each level of enrichment(rows)
-k2 <- c(0.01, 0.1, 1) # Gas exchange constants (min^-1)
+k2 <- c(0.001, 0.005, 0.01) # Gas exchange constants (min^-1)
 params <- data.frame(
   N15NO30 = rep(as.vector(N15NO30), times = length(k2)),
   NO30 = rep(as.vector(NO30), times = length(k2)), 
@@ -162,19 +162,48 @@ names(k2Labs) <- k2
 NO3PreLabs <- paste("[NO<sub>3</sub>]<sub>bg</sub> = ", NO3Pre, "&mu;g L<sup>-1</sup>")
 names(NO3PreLabs) <- NO3Pre
 
+# Convert concentrations from ug N/L to uM nitrate
+NO3PIs <- NO3PIs %>% 
+  mutate(Median = Median/15,
+         Lower = Lower/15,
+         Upper = Upper/15)
+
 # Nitrate isotopic composition plot
-plotPI(NO3PIs %>% filter(delta == 10000)) + 
+plotPI(NO3PIs %>% filter(delta == 10000, NO3Pre == 200)) + 
+  #facet_wrap(vars(NO3Pre), nrow = 1, labeller = labeller(NO3Pre = NO3PreLabs)) + 
+  ylab("[15N-NO3] (uM)")  + 
+  ggtitle("(&delta;<sup>15</sup>N-NO<sub>3</sub>)<sub>init</sub> = 10,000&permil; , [NO<sub>3</sub>]<sub>bg</sub> = 200 &mu;g L<sup>-1</sup>") +
+  theme(
+    strip.text = element_markdown(), 
+    plot.title = element_markdown()
+  ) #+
+  #geom_hline(yintercept = 4, color = "red")
+
+plotPI(NO3PIs %>% filter(delta == 10000, k2 == 0.01)) + 
   facet_wrap(vars(NO3Pre), nrow = 1, labeller = labeller(NO3Pre = NO3PreLabs)) + 
-  ylab("[15N-NO3]")  + 
+  ylab("[15N-NO3](uM)")  + 
   ggtitle("(&delta;<sup>15</sup>N-NO<sub>3</sub>)<sub>init</sub> = 10,000&permil;") +
   theme(
     strip.text = element_markdown(), 
     plot.title = element_markdown()
+  ) 
+
+# N-gas isotopic composition plots
+# Compare results among background nitrate concentrations
+plotPI(NGasPIs %>% filter(delta == 10000, k2 == 0.01)) + 
+  facet_wrap(vars(NO3Pre), labeller = labeller(NO3Pre = NO3PreLabs)) +
+  ylab("[15N-Ngas]") +
+  ggtitle("(&delta;<sup>15</sup>N-NO<sub>3</sub>)<sub>init</sub> = 10,000&permil;") +
+  theme(
+    strip.text = element_markdown(), 
+    strip.text.x = element_markdown(),
+    strip.text.y = element_markdown(),
+    plot.title = element_markdown()
   )
 
-# N-gas isotopic composition plot
-plotPI(NGasPIs %>% filter(delta == 10000)) + 
-  facet_grid(rows = vars(NO3Pre), cols = vars(k2), labeller = labeller(k2 = k2Labs, NO3Pre = NO3PreLabs)) + 
+# Compare results among gas exchange constants
+plotPI(NGasPIs %>% filter(delta == 10000, NO3Pre == 200)) + 
+  facet_wrap(vars(k2), labeller = labeller(k2 = k2Labs)) +
   ylab("[15N-Ngas]") +
   ggtitle("(&delta;<sup>15</sup>N-NO<sub>3</sub>)<sub>init</sub> = 10,000&permil;") +
   theme(
@@ -184,3 +213,16 @@ plotPI(NGasPIs %>% filter(delta == 10000)) +
     plot.title = element_markdown()
   )
 ```
+
+## Summary of findings: 
+- There's a ton of uncertainty in the rate-constants for total nitrate uptake and denitrification. This uncertainty could potentially be reduced by incorporating GPP and ER as covariates, respectively. 
+- The level of isotopic enrichment shouldn't matter too much assuming we will be above the detection limit at UC Davis. 
+- The timing of nitrate sampling depends only on the rate of total nitrate uptake and not on background nitrate concentration, isotopic enrichment level, or gas exchange.
+- The timing of denitrification sampling depends both on the rate denitrification and on the rate of gas exchange.
+
+## Worthwhile next steps: 
+- Constrain gross nitrate uptake rates by estimating net nitrate uptake with measurements of mesocosm inflows and outlows.
+- Constrain gross nitrate uptake rates and denitrification rates by adding additional covariates like GPP and respiration.
+- Estimate gas exchange.
+
+

@@ -10,7 +10,7 @@ getPI <- function(ensemble, varName, times){
 }
 
 # Plot prediction intervals
-plotPI <- function(PI, xFacet = "NO3Pre", yFacet = "delta"){
+plotPI <- function(PI){
   plot <- ggplot(data = PI, aes(x = times)) +
     geom_ribbon(aes(x = times, ymin = Lower, ymax = Upper), fill = "grey80") + 
     geom_line(aes(y = Median)) +
