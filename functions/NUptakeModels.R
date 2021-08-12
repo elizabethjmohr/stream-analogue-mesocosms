@@ -1,4 +1,4 @@
-# This function generates several time series of N15-N2 + N15-N20 (N15Gas) and of N15-NO3 concentrations
+# This function generates a time series of N15-N2 + N15-N20 (N15Gas) and of N15-NO3 concentrations
 # for each set of regression coefficients and residual error precisions.
 # Assumption: Dissolved N2 gas concentration at steady state before tracer experiment
 

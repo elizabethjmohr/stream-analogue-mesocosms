@@ -25,6 +25,7 @@ dev.off()
 AugDates <- seq(as.Date("2021-08-01"), as.Date("2021-08-31"), by = "1 day")
 AugEvents <- rep(NA, times = length(AugDates))
 AugEvents[c(3, 7, 10)]<- "Energy Labs - no rush"
+AugEvents[c(16, 23)] <- "Energy Labs - rush"
 
 png(filename = "./plots/nitrateSamplingCalenderAug2021.png",
     width = 11,
@@ -35,10 +36,11 @@ calendR(
   year = 2021, 
   month = 8,
   special.days = AugEvents,
-  special.col = c("lightblue"),
+  special.col = c("lightblue", "yellow"),
   title = "Nitrate Sampling Plan - August",
-  text = c("Tap water", "Tap water", "Tap water,\n ASW Conc, \nEffluent"), 
-  text.pos = c(3,7,10),
+  text = c("Tap water", "Tap water", "Tap water,\n ASW Conc, \nEffluent",
+           "ASW, \nEffluent", "ASW, \nEffluent"), 
+  text.pos = c(3,7,10, 16, 23),
   legend.pos = "bottom",
   orientation = "landscape"
 )
@@ -58,7 +60,7 @@ calendR(
   year = 2021, 
   month = 9,
   special.days = SeptEvents,
-  special.col = c("grey80", "dodgerblue"),
+  special.col = c("dodgerblue", "grey80"),
   title = "Nitrate Sampling Plan - September",
   text = c("All SAMS, \nASW, \nEffluent","15N-NO3 release \n(Sample \neverything)"), 
   text.pos = c(14, 17),
