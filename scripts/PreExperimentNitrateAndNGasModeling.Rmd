@@ -18,7 +18,7 @@ library(here)
 linx <- read_xlsx(path = here("data", "LINXII.xlsx"), 
                   sheet = "Data",
                   col_types = c(rep("text", times = 3), 
-                                rep("numeric", times = 10)),
+                                rep("numeric", times = 11)),
                   na = "NA")
 
 # Note: rate constants were originally given in units of m^-1, and velocities in m/min, so final 
@@ -34,13 +34,15 @@ linx <- linx %>%
   mutate(ku_norm_log = log(ku_norm),
          kden_norm_log = log(kden_norm),
          ktot_norm_log = log(ktot_norm),
-         NO3_log = log(NO3)) 
+         NO3_log = log(NO3), 
+         ER_log = log(ER_grams_m2_day)) %>%
+  filter(!is.na(ER_log))
 ```
 
 ## Estimate Parameters
 Here, I estimate parameters for two simple linear models: 
-$$ log(k_{tot}) = \beta_0 + \beta_1log([NO_3^{-1}]) + \epsilon $$
-$$ log(k_{den}) = \beta_0 + \beta_1log([NO_3^{-1}]) + \epsilon $$
+$$ log(k_{tot}) = \beta_0 + \beta_1log([NO_3^{-1}]) +\epsilon $$
+$$ log(k_{den}) = \beta_0 + \beta_1log([NO_3^{-1}]) + \beta_2log(ER) +\epsilon $$
 where $\epsilon \sim Normal(0, \sigma^2)$
 
 I use Just Another Gibbs Sampler (JAGS) to sample the posterior distributions of the linear regression coefficients and the precisions of both random error terms.
@@ -50,11 +52,13 @@ library(coda)
 library(eivtools)
 
 # Make data into a list that can be passed to JAGS
-data <- list(x = linx$NO3_log, kTot = linx$ktot_norm_log, kDen = linx$kden_norm_log, n = nrow(linx))
+data <- list(x = linx$NO3_log, kTot = linx$ktot_norm_log, kDen = linx$kden_norm_log,ER = linx$ER_log, n = nrow(linx))
 
 # Specify moments for priors
 data$b0 <- c(0,0)  # means for multivariate-normal linear regression coefficient prior
-data$Vb <- solve(diag(10000,2)) # precisions for multivariate-normal linear regression coefficient prior
+data$b0Den <- c(0,0,0)  # means for multivariate-normal linear regression coefficient prior
+data$Vb <- solve(diag(1000,2)) # precisions for multivariate-normal linear regression coefficient prior
+data$VbDen <- solve(diag(1000,3)) # precisions for multivariate-normal linear regression coefficient prior
 data$s1 <- 0.1  # shape parameter for gamma-distributed error prior 
 data$s2 <- 0.1  # scale parameter for gamma-distributed error prior
 
@@ -63,14 +67,14 @@ multivariate_regression <- "
 model{
 
   betakTot ~ dmnorm(b0,Vb)      ## multivariate Normal prior on vector of regression params
-  betakDen ~ dmnorm(b0,Vb)      ## multivariate Normal prior on vector of regression params
+  betakDen ~ dmnorm(b0Den,VbDen)      ## multivariate Normal prior on vector of regression params
   preckTot ~ dgamma(s1,s2)   ## prior precision
   preckDen ~ dgamma(s1,s2)   ## prior precision
 
   for(i in 1:n){
       mukTot[i] <- betakTot[1] + betakTot[2]*x[i]   
       kTot[i]  ~ dnorm(mukTot[i], preckTot)  
-      mukDen[i] <- betakDen[1] + betakDen[2]*x[i]   
+      mukDen[i] <- betakDen[1] + betakDen[2]*x[i] + betakDen[2]* ER[i]  
       kDen[i]  ~ dnorm(mukDen[i], preckDen)  
   }
 }"
@@ -79,7 +83,7 @@ model{
 nChains = 3
 inits <- list()
 for(i in 1:nChains){
- inits[[i]] <- list(betakTot = rnorm(2,0,5), betakDen = rnorm(2,0,5), preckTot = runif(1,1/100,1/20), preckDen = runif(1,1/100,1/20))
+ inits[[i]] <- list(betakTot = rnorm(2,0,5), betakDen = rnorm(3,0,5), preckTot = runif(1,1/100,1/20), preckDen = runif(1,1/100,1/20))
 }
 
 # Create JAGS model object
@@ -107,7 +111,7 @@ out <- as.matrix(jags.burn)
 ```
 
 ## Simulate Nitrate and Nitrogen Gas Dynamics
-Here I use a Monte Carlo approach to propagating uncertainty by randomly sampling rows from the MCMC output, calculating first-order rate constants based on the parameters in each row, and simulating $^{15}$N-NO$_3$ and $^{15}$N-NO$_3$ concentrations for 24 hours following an isotopic release according to a first-order kinetic model with gas exchange. I've run the Monte Carlo simulation for three nitrate concentrations, three levels of isotopic enrichment, and three gas exchange constants for comparison purposes. 
+Here I use a Monte Carlo approach to propagating uncertainty by randomly sampling rows from the MCMC output, calculating first-order rate constants based on the parameters in each row, and simulating $^{15}$N-NO$_3$ and $^{15}$N-NO$_3$ concentrations for 24 hours following an isotopic release according to a first-order kinetic model with gas exchange. I've run the Monte Carlo simulation for three nitrate concentrations, three ecosystem respiration rates, and three gas exchange constants for comparison purposes. 
 ```{r}
 library(isoToolsR)
 source(here("functions", "NUptakeModels.R"))
@@ -122,23 +126,19 @@ n <- 5000
 indices <- sample.int(nrow(out), n, replace = TRUE)
 
 # Specify simulation time in minutes
-times <- seq(0, 60*24, length.out = 500)
+times <- seq(0, 24*60, length.out = 500)
 
 # Generate data frame of parameter combinations
-NO3Pre <- c(100, 200, 300) # Nitrate concentration in SAM before isotope release
-deltaNO30 <- c(5000, 10000, 20000) # Isotopic enrichment expressed as a delta value (permil)
-percentTracer <- sapply(deltaNO30, calcPercentTracer, Rst = RstN, AFadd = AFadd)
-NO3add <- matrix(percentTracer, nrow = 3) %*% matrix(NO3Pre, nrow = 1) # Matrix of added NO3 concentrations for each initial nitrate concentration (columns) and each level of enrichment(rows)
-NO30 <- (1+matrix(percentTracer ,nrow = 3)) %*% matrix(NO3Pre, nrow = 1) # Matrix of total NO3 concentration after N15 addition for each initial nitrate concentration (columns) and each level of enrichment(rows)
-N15NO30 <- AFadd * NO3add + RToAtomFrac(RstN) * matrix(rep(NO3Pre, each = length(deltaNO30)), nrow = length(deltaNO30)) # Matrix of total N15-NO3 concentration after N15 addition for each initial nitrate concentration (columns) and each level of enrichment(rows)
-k2 <- c(0.001, 0.005, 0.01) # Gas exchange constants (min^-1)
-params <- data.frame(
-  N15NO30 = rep(as.vector(N15NO30), times = length(k2)),
-  NO30 = rep(as.vector(NO30), times = length(k2)), 
-  NO3Pre = rep(rep(NO3Pre, each = length(deltaNO30) ), times = length(k2)),
-  deltaNO30 = rep(rep(deltaNO30, times = length(NO3Pre)), times = length(k2)), 
-  k2 = rep(k2, each = (length(as.vector(N15NO30))))
-)
+
+percentTracer <- calcPercentTracer(12000, RstN, AFadd)
+params <- tibble(
+  NO3Pre = c(100, 150, 200), # Nitrate concentration in SAM before isotope release
+  k2 = c(0.005,0.015,0.025), # Gas exchange constants (min^-1),
+  ER = c(0.7, 4.0, 8.6) # Ecosystem respiration (g/(m^2*day))
+) %>%
+  expand(NO3Pre, k2, ER) %>%
+  mutate(NO30 = (1+percentTracer) * NO3Pre, # Initial nitrate concentration 
+         N15NO30 = AFadd * percentTracer * NO3Pre + RToAtomFrac(RstN)*NO3Pre) # Initial N15 nitrate concentration 
 
 # For each combination of parameters, generate ensemble of predictions for delta 15N-NGas vs. time
 ensembles <- pmap(params, 
@@ -148,70 +148,68 @@ ensembles <- pmap(params,
                   precTot = out[indices,"preckTot"], 
                   B0Den = out[indices, "betakDen[1]"],
                   B1Den = out[indices,"betakDen[2]"], 
+                  B2Den = out[indices,"betakDen[3]"], 
                   precDen = out[indices,"preckDen"], 
                   times = times)
 
 # Calculate median, 2.5% and 97.5% quantiles for each time
-NO3PIs <- map_dfr(ensembles, getPI, times = times, varName = "N15Nitrate")
+NO3PIs <- map_dfr(ensembles, getPI, times = times, varName = "Nitrate")
+N15NO3PIs <- map_dfr(ensembles, getPI, times = times, varName = "N15Nitrate")
 NGasPIs <- map_dfr(ensembles, getPI, times = times, varName = "N15Gas")
 
 # Plot prediction intervals with median
 library(ggtext)
+k2 <- c(0.005,0.015,0.025)
 k2Labs <- paste("k<sub>2</sub> = ", k2, "min<sup>-1</sup>")
 names(k2Labs) <- k2
+NO3Pre <- c(100, 150, 200)
 NO3PreLabs <- paste("[NO<sub>3</sub>]<sub>bg</sub> = ", NO3Pre, "&mu;g L<sup>-1</sup>")
 names(NO3PreLabs) <- NO3Pre
 
 # Convert concentrations from ug N/L to uM nitrate
 NO3PIs <- NO3PIs %>% 
+  mutate(Median = Median/14,
+         Lower = Lower/14,
+         Upper = Upper/14)
+
+N15NO3PIs <- N15NO3PIs %>% 
   mutate(Median = Median/15,
          Lower = Lower/15,
          Upper = Upper/15)
 
-# Nitrate isotopic composition plot
-plotPI(NO3PIs %>% filter(delta == 10000, NO3Pre == 200)) + 
-  #facet_wrap(vars(NO3Pre), nrow = 1, labeller = labeller(NO3Pre = NO3PreLabs)) + 
-  ylab("[15N-NO3] (uM)")  + 
-  ggtitle("(&delta;<sup>15</sup>N-NO<sub>3</sub>)<sub>init</sub> = 10,000&permil; , [NO<sub>3</sub>]<sub>bg</sub> = 200 &mu;g L<sup>-1</sup>") +
-  theme(
-    strip.text = element_markdown(), 
-    plot.title = element_markdown()
-  ) #+
-  #geom_hline(yintercept = 4, color = "red")
-
-plotPI(NO3PIs %>% filter(delta == 10000, k2 == 0.01)) + 
+# Compare nitrate concentration vs. time for three initial nitrate concentrations
+plotPI(NO3PIs) + 
   facet_wrap(vars(NO3Pre), nrow = 1, labeller = labeller(NO3Pre = NO3PreLabs)) + 
-  ylab("[15N-NO3](uM)")  + 
-  ggtitle("(&delta;<sup>15</sup>N-NO<sub>3</sub>)<sub>init</sub> = 10,000&permil;") +
-  theme(
-    strip.text = element_markdown(), 
-    plot.title = element_markdown()
-  ) 
+  ylab("[NO3] (uM)") +
+  theme(strip.text = element_markdown(), plot.title = element_markdown()) +
+  geom_hline(yintercept = 4, color = "red")
 
-# N-gas isotopic composition plots
-# Compare results among background nitrate concentrations
-plotPI(NGasPIs %>% filter(delta == 10000, k2 == 0.01)) + 
+# Compare N15-nitrate concentration vs. time for three initial nitrate concentrations
+plotPI(N15NO3PIs) + 
+  facet_wrap(vars(NO3Pre), nrow = 1, labeller = labeller(NO3Pre = NO3PreLabs)) + 
+  ylab("[15N-NO3] (uM)")  + 
+  ggtitle("(&delta;<sup>15</sup>N-NO<sub>3</sub>)<sub>init</sub> = 12,000&permil; , [NO<sub>3</sub>]<sub>bg</sub> = 200 &mu;g L<sup>-1</sup>") +
+  theme(strip.text = element_markdown(), plot.title = element_markdown()) 
+
+# Compare N5-gas concentrations among background nitrate concentrations
+ggplot(NGasPIs %>% filter(k2 == 0.015, ER == 4), aes(x = times, y = Median)) + 
+  geom_point()+
   facet_wrap(vars(NO3Pre), labeller = labeller(NO3Pre = NO3PreLabs)) +
   ylab("[15N-Ngas]") +
-  ggtitle("(&delta;<sup>15</sup>N-NO<sub>3</sub>)<sub>init</sub> = 10,000&permil;") +
-  theme(
-    strip.text = element_markdown(), 
-    strip.text.x = element_markdown(),
-    strip.text.y = element_markdown(),
-    plot.title = element_markdown()
-  )
+  theme(strip.text = element_markdown(), strip.text.x = element_markdown(),strip.text.y = element_markdown(),plot.title = element_markdown()) 
 
-# Compare results among gas exchange constants
-plotPI(NGasPIs %>% filter(delta == 10000, NO3Pre == 200)) + 
+# Compare N5-gas concentrations among among gas exchange constants
+ggplot(NGasPIs %>% filter(NO3Pre == 150, ER == 4), aes(x = times, y = Median)) + 
+  geom_point()+
   facet_wrap(vars(k2), labeller = labeller(k2 = k2Labs)) +
   ylab("[15N-Ngas]") +
-  ggtitle("(&delta;<sup>15</sup>N-NO<sub>3</sub>)<sub>init</sub> = 10,000&permil;") +
-  theme(
-    strip.text = element_markdown(), 
-    strip.text.x = element_markdown(),
-    strip.text.y = element_markdown(),
-    plot.title = element_markdown()
-  )
+  theme(strip.text = element_markdown(), strip.text.x = element_markdown(),strip.text.y = element_markdown(),plot.title = element_markdown()) 
+
+# Compare N5-gas concentrations ecosystem respiration rates
+ggplot(NGasPIs %>% filter(NO3Pre == 150, k2 == 0.015), aes(x = times, y = Median)) + 
+  geom_point() + 
+  facet_wrap(vars(ER))
+
 ```
 
 ## Summary of findings: 

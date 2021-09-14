@@ -2,16 +2,18 @@
 # for each set of regression coefficients and residual error precisions.
 # Assumption: Dissolved N2 gas concentration at steady state before tracer experiment
 
-predictN15 <- function(N15NO30, NO30, NO3Pre, deltaNO30, B0Tot, B1Tot, precTot, B0Den, B1Den, precDen, k2, times, AFPre = 0.003664522){
+predictN15 <- function(N15NO30, NO30, NO3Pre, k2, ER, B0Tot, B1Tot, precTot, B0Den, B1Den, B2Den, precDen, times, AFPre = 0.003664522){
   kTotMu <- B0Tot + B1Tot * log(NO30) 
   kTot <- rlnorm(n = length(kTotMu), meanlog = kTotMu, sdlog = sqrt(1/precTot))
-  kDenMu <- B0Den + B1Den * log(NO30) 
+  kDenMu <- B0Den + B1Den * log(NO30) + B2Den*log(ER)
   kDen <- rlnorm(n = length(kDenMu), meanlog = kDenMu, sdlog = sqrt(1/precDen))
   N15Nitrate <- matrix(NA,n,length(times))
+  Nitrate <- matrix(NA,n,length(times))
   N15Gas <- matrix(NA,n,length(times))
   for(i in 1:length(times)){
+    Nitrate[,i] <- NO30*exp(-kTot * times[i])
     N15Nitrate[,i] <- N15NO30*exp(-kTot * times[i])
     N15Gas[,i] <- N15NO30 * (kDen/(k2 - kTot))*(exp(-kTot*times[i])- exp(-k2*times[i])) 
   }
-  return(list(N15Nitrate = N15Nitrate, N15Gas = N15Gas, kTot = kTot, kDen = kDen, k2 = k2, deltaNO30 = deltaNO30, NO30 = NO30, NO3Pre = NO3Pre))
+  return(list(N15Nitrate = N15Nitrate, N15Gas = N15Gas, Nitrate = Nitrate, kTot = kTot, kDen = kDen, k2 = k2, ER = ER, NO30 = NO30, NO3Pre = NO3Pre))
 }
