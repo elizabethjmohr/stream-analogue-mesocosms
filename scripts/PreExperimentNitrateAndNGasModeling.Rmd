@@ -42,7 +42,7 @@ linx <- linx %>%
 ## Estimate Parameters
 Here, I estimate parameters for two simple linear models: 
 $$ log(k_{tot}) = \beta_0 + \beta_1log([NO_3^{-1}]) +\epsilon $$
-$$ log(k_{den}) = \beta_0 + \beta_1log([NO_3^{-1}]) + \beta_2log(ER) +\epsilon $$
+$$ log(k_{den}) = \beta_0 + \beta_1log([NO_3^{-1}]) +\epsilon $$
 where $\epsilon \sim Normal(0, \sigma^2)$
 
 I use Just Another Gibbs Sampler (JAGS) to sample the posterior distributions of the linear regression coefficients and the precisions of both random error terms.
@@ -52,13 +52,11 @@ library(coda)
 library(eivtools)
 
 # Make data into a list that can be passed to JAGS
-data <- list(x = linx$NO3_log, kTot = linx$ktot_norm_log, kDen = linx$kden_norm_log,ER = linx$ER_log, n = nrow(linx))
+data <- list(x = linx$NO3_log, kTot = linx$ktot_norm_log, kDen = linx$kden_norm_log, n = nrow(linx))
 
 # Specify moments for priors
 data$b0 <- c(0,0)  # means for multivariate-normal linear regression coefficient prior
-data$b0Den <- c(0,0,0)  # means for multivariate-normal linear regression coefficient prior
 data$Vb <- solve(diag(1000,2)) # precisions for multivariate-normal linear regression coefficient prior
-data$VbDen <- solve(diag(1000,3)) # precisions for multivariate-normal linear regression coefficient prior
 data$s1 <- 0.1  # shape parameter for gamma-distributed error prior 
 data$s2 <- 0.1  # scale parameter for gamma-distributed error prior
 
@@ -67,14 +65,14 @@ multivariate_regression <- "
 model{
 
   betakTot ~ dmnorm(b0,Vb)      ## multivariate Normal prior on vector of regression params
-  betakDen ~ dmnorm(b0Den,VbDen)      ## multivariate Normal prior on vector of regression params
+  betakDen ~ dmnorm(b0,Vb)       ## multivariate Normal prior on vector of regression params
   preckTot ~ dgamma(s1,s2)   ## prior precision
   preckDen ~ dgamma(s1,s2)   ## prior precision
 
   for(i in 1:n){
       mukTot[i] <- betakTot[1] + betakTot[2]*x[i]   
       kTot[i]  ~ dnorm(mukTot[i], preckTot)  
-      mukDen[i] <- betakDen[1] + betakDen[2]*x[i] + betakDen[2]* ER[i]  
+      mukDen[i] <- betakDen[1] + betakDen[2]*x[i]  
       kDen[i]  ~ dnorm(mukDen[i], preckDen)  
   }
 }"
@@ -83,7 +81,7 @@ model{
 nChains = 3
 inits <- list()
 for(i in 1:nChains){
- inits[[i]] <- list(betakTot = rnorm(2,0,5), betakDen = rnorm(3,0,5), preckTot = runif(1,1/100,1/20), preckDen = runif(1,1/100,1/20))
+ inits[[i]] <- list(betakTot = rnorm(2,0,5), betakDen = rnorm(2,0,5), preckTot = runif(1,1/100,1/20), preckDen = runif(1,1/100,1/20))
 }
 
 # Create JAGS model object
@@ -111,7 +109,7 @@ out <- as.matrix(jags.burn)
 ```
 
 ## Simulate Nitrate and Nitrogen Gas Dynamics
-Here I use a Monte Carlo approach to propagating uncertainty by randomly sampling rows from the MCMC output, calculating first-order rate constants based on the parameters in each row, and simulating $^{15}$N-NO$_3$ and $^{15}$N-NO$_3$ concentrations for 24 hours following an isotopic release according to a first-order kinetic model with gas exchange. I've run the Monte Carlo simulation for three nitrate concentrations, three ecosystem respiration rates, and three gas exchange constants for comparison purposes. 
+Here I use a Monte Carlo approach to propagating uncertainty by randomly sampling rows from the MCMC output, calculating first-order rate constants based on the parameters in each row, and simulating $^{15}$N-NO$_3$ and $^{15}$N-NO$_3$ concentrations for 24 hours following an isotopic release according to a first-order kinetic model with gas exchange. I've run the Monte Carlo simulation for three nitrate concentrations and three gas exchange constants for comparison purposes. 
 ```{r}
 library(isoToolsR)
 source(here("functions", "NUptakeModels.R"))
@@ -134,9 +132,8 @@ percentTracer <- calcPercentTracer(12000, RstN, AFadd)
 params <- tibble(
   NO3Pre = c(100, 150, 200), # Nitrate concentration in SAM before isotope release
   k2 = c(0.005,0.015,0.025), # Gas exchange constants (min^-1),
-  ER = c(0.7, 4.0, 8.6) # Ecosystem respiration (g/(m^2*day))
 ) %>%
-  expand(NO3Pre, k2, ER) %>%
+  expand(NO3Pre, k2) %>%
   mutate(NO30 = (1+percentTracer) * NO3Pre, # Initial nitrate concentration 
          N15NO30 = AFadd * percentTracer * NO3Pre + RToAtomFrac(RstN)*NO3Pre) # Initial N15 nitrate concentration 
 
@@ -192,23 +189,29 @@ plotPI(N15NO3PIs) +
   theme(strip.text = element_markdown(), plot.title = element_markdown()) 
 
 # Compare N5-gas concentrations among background nitrate concentrations
-ggplot(NGasPIs %>% filter(k2 == 0.015, ER == 4), aes(x = times, y = Median)) + 
+plotPI(NGasPIs %>% filter(k2 == 0.015))+ 
+  facet_wrap(vars(NO3Pre), nrow = 1, labeller = labeller(NO3Pre = NO3PreLabs))+
+  ylab("[15N-Ngas]") +
+  theme(strip.text = element_markdown(), strip.text.x = element_markdown(),strip.text.y = element_markdown(), plot.title = element_markdown()) 
+  
+ggplot(NGasPIs, aes(x = times, y = Median)) + 
   geom_point()+
   facet_wrap(vars(NO3Pre), labeller = labeller(NO3Pre = NO3PreLabs)) +
   ylab("[15N-Ngas]") +
   theme(strip.text = element_markdown(), strip.text.x = element_markdown(),strip.text.y = element_markdown(),plot.title = element_markdown()) 
 
 # Compare N5-gas concentrations among among gas exchange constants
-ggplot(NGasPIs %>% filter(NO3Pre == 150, ER == 4), aes(x = times, y = Median)) + 
+
+plotPI(NGasPIs %>% filter(NO3Pre == 150))+ 
+  facet_wrap(vars(k2), nrow = 1, labeller = labeller(k2 = k2Labs))+
+  ylab("[15N-Ngas]") +
+  theme(strip.text = element_markdown(), strip.text.x = element_markdown(),strip.text.y = element_markdown(),plot.title = element_markdown()) 
+  
+ggplot(NGasPIs, aes(x = times, y = Median)) + 
   geom_point()+
   facet_wrap(vars(k2), labeller = labeller(k2 = k2Labs)) +
   ylab("[15N-Ngas]") +
   theme(strip.text = element_markdown(), strip.text.x = element_markdown(),strip.text.y = element_markdown(),plot.title = element_markdown()) 
-
-# Compare N5-gas concentrations ecosystem respiration rates
-ggplot(NGasPIs %>% filter(NO3Pre == 150, k2 == 0.015), aes(x = times, y = Median)) + 
-  geom_point() + 
-  facet_wrap(vars(ER))
 
 ```
 

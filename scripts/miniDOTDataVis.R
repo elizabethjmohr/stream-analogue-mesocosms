@@ -8,9 +8,10 @@ source(here("functions", "readMiniDOTData.R"))
 startDate <- as_date("2021-08-25")
 endDate <- as_date("2021-08-31")
 
+# TODO: get all data from SQL DB instead of local CSVs
 DO <- readAllLoggerFiles("data/miniDOT", startDate, endDate)
 
-baro <- read.csv("data/baro_mbar_2021-08-26-2021-09-01.csv") %>%
+baro <- read.csv("data/baro_mbar_2021-08-26-2021-09-10.csv") %>%
   mutate(dateTime = as_datetime(Time, tz = "US/Mountain")) %>%
   rename(P_mb = `Absolute.Pressure..mb.`)
 

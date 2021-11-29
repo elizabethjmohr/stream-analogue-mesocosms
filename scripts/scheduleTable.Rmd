@@ -1,0 +1,103 @@
+---
+title: "Schedule"
+output: html_document
+params: 
+  sampleType: "Gas Samples"
+  flumes: !r LETTERS[1:5]
+---
+
+```{r, echo = FALSE, warning = FALSE, message = FALSE}
+library(tidyverse)
+library(lubridate)
+
+# Specify when the experiment will begin
+experimentStartTime <- ymd_hms(ymd_hms("2021-09-17 07:40:00"),
+                               tz = "America/Denver")
+
+# Specify times at which nitrate will be released
+releaseTimes <- tibble(flume = params$flumes, 
+                       releaseTime = experimentStartTime + minutes(c(10,35,70,95,135)))
+
+# Specify times at which each flume will be sampled following the nitrate release
+timepoints <- c(-10,10,40,85,140,200,280,360,475,600)
+
+# Determine times at which each flume should be sampled 
+times <- tibble(flume = rep(params$flumes, each = length(timepoints)),
+                timepoint = rep(timepoints, times = nrow(releaseTimes))) %>%
+  left_join(releaseTimes, by = c("flume")) %>%
+  mutate("Gas Samples" = releaseTime + minutes(timepoint),
+         "Nitrate Samples" = releaseTime + minutes(timepoint) + minutes(5)) %>% 
+  pivot_longer(cols = c("Gas Samples", "Nitrate Samples"), names_to = "Task", values_to = "Start") %>% 
+  mutate(End = Start + minutes(5)) %>%
+  mutate(low = match(flume, params$flumes) - 0.5, 
+         high = match(flume, params$flumes) + 0.5)
+
+times[which(times$low == 1.5 & times$timepoint == 140), ]$Start <- times[which(times$low == 1.5 & times$timepoint == 140),]$Start - minutes(c(5,5))
+times[which(times$low == 0.5 & times$timepoint == 200), ]$Start <- times[which(times$low == 0.5 & times$timepoint == 200),]$Start - minutes(c(5,5))
+times[which(times$low == 1.5 & times$timepoint == 200), ]$Start <- times[which(times$low == 1.5 & times$timepoint == 200),]$Start - minutes(c(5,5))
+times[which(times$low == 0.5 & times$timepoint == 600), ]$Start <- times[which(times$low == 0.5 & times$timepoint == 600),]$Start - minutes(c(5,5))
+times[which(times$low == 1.5 & times$timepoint == 140), ]$End <- times[which(times$low == 1.5 & times$timepoint == 140),]$End - minutes(c(5,5))
+times[which(times$low == 0.5 & times$timepoint == 200), ]$End <- times[which(times$low == 0.5 & times$timepoint == 200),]$End - minutes(c(5,5))
+times[which(times$low == 1.5 & times$timepoint == 200), ]$End <- times[which(times$low == 1.5 & times$timepoint == 200),]$End - minutes(c(5,5))
+times[which(times$low == 0.5 & times$timepoint == 600), ]$End <- times[which(times$low == 0.5 & times$timepoint == 600),]$End - minutes(c(5,5))
+```
+
+# `r params$sampleType` for Flumes `r params$flumes[1]` - `r params$flumes[5]`
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+library(kableExtra)
+if(params$sampleType == "Gas Samples"){
+  suffix = "g"
+  minutesToAdd = 0
+}else{
+  suffix = "c/i"
+  minutesToAdd = 5
+}
+
+
+times <- times %>%
+  mutate(sampleID = paste0("CAD_210917_", flume, (match(timepoint, timepoints))-1, suffix)) %>%
+  select(-low, -high) %>%
+  add_row(flume = params$flumes[1], 
+          timepoint = -10, 
+          releaseTime = filter(releaseTimes, flume == params$flume[1]) %>% pull(releaseTime), 
+          Task = params$sampleType, 
+          sampleID = paste0("CAD_220917_", params$flumes[1], "0", suffix, "_d"), 
+          Start = releaseTime - minutes(20) + minutes(minutesToAdd), 
+          End = Start + minutes(5)) %>% 
+  add_row(flume = params$flumes[4], 
+          timepoint = 85, 
+          releaseTime = filter(releaseTimes, flume == params$flume[4]) %>% pull(releaseTime), 
+          Task = params$sampleType, 
+          sampleID = paste0("CAD_220917_", params$flumes[4], "3", suffix, "_d"), 
+          Start = releaseTime + minutes(95) + minutes(minutesToAdd), 
+          End = Start + minutes(5)) %>% 
+  add_row(flume = params$flumes[2], 
+          timepoint = 85, 
+          releaseTime = filter(releaseTimes, flume == params$flume[2]) %>% pull(releaseTime), 
+          Task = params$sampleType, 
+          sampleID = paste0("CAD_220917_", params$flumes[2], "8", suffix, "_d"), 
+          Start = releaseTime + minutes(490) + minutes(minutesToAdd), 
+          End = Start + minutes(5)) 
+times %>%
+  filter(Task == params$sampleType) %>%
+  mutate("Start Time" = paste0(hour(Start), ":", minute(Start)), 
+         "End Time" = paste0(hour(End), ":", minute(End))) %>%
+  arrange(Start) %>%
+  select(flume, timepoint, "Start Time", "End Time", sampleID) %>%
+  kbl()%>%
+  kable_styling(bootstrap_options = c("striped", "condensed"), full_width = FALSE)
+```
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+library(ggplot2)
+cbbPalette <- c("#000000", "#E69F00", "#56B4E9", "#009E73", "#0072B2")
+ggplot(times %>% filter(Task == params$sampleType), aes(ymin = 0, ymax = 1,xmin = Start, xmax = End)) + 
+  geom_rect(aes(fill = flume)) + 
+  scale_x_datetime(breaks = scales::breaks_pretty(11))+
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+
+  scale_fill_manual(values=cbbPalette)
+
+```
+

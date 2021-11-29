@@ -4,3 +4,6 @@
 .Ruserdata
 stream-analogue-mesocosms.Rproj
 scripts/PreExperimentNitrateAndNGasModeling.html
+data/
+sampleIDs/
+plots/

@@ -5,7 +5,7 @@ getPI <- function(ensemble, varName, times){
     as_tibble() %>%
     mutate(times = times/60) %>%
     rename("Lower" = "2.5%", "Median" = "50%", "Upper" = "97.5%") %>% 
-    mutate(delta = ensemble$deltaNO30, NO3Pre = ensemble$NO3Pre, k2 = ensemble$k2, ER = ensemble$ER)
+    mutate(delta = ensemble$deltaNO30, NO3Pre = ensemble$NO3Pre, k2 = ensemble$k2)
   return(pi)
 }
 

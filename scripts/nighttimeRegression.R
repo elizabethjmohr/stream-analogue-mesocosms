@@ -11,6 +11,7 @@ source(here("functions", "nighttimeRegression.R"))
 startDate <- as_date("2021-08-25")
 endDate <- as_date("2021-09-09")
 
+# TODO: get all data from DB
 DO <- readAllLoggerFiles("data/miniDOT", startDate, endDate)
 
 baro <- read.csv("data/baro_mbar_2021-08-26-2021-09-10.csv") %>%
