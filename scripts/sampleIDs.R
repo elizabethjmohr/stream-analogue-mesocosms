@@ -20,8 +20,9 @@ nutrientSampleIDs <- tibble(
           duplicate = FALSE) %>%
   mutate(date = if_else(timepoint<10, as_date("2021-09-17"), as_date("2021-09-18"))) %>%
   mutate(dateChar = if_else(timepoint<10, "210917", "210918")) %>%
-  mutate(sampleID = paste0("CAD_", dateChar,"_", flume, timepoint, "c", if_else(duplicate, "_d", ""))) %>%
-  select(date, flume, timepoint, sampleID) %>%
+  mutate(sampleID = paste0("CAD_", dateChar,"_", flume, timepoint, "c", if_else(duplicate, "_d", "")),
+         location = paste0("Flume ", flume)) %>%
+  select(date, location, flume, timepoint, sampleID) %>%
   arrange(flume, timepoint)
 
 write.csv(nutrientSampleIDs, file = "./sampleIDs/2021-09-17_Nutrient_SampleIDs.csv", row.names = FALSE)
@@ -39,6 +40,7 @@ inOutSampleIDs <- tibble(
          day = day(date)) %>%
   mutate(dateChar = paste0(year, "0", month, if_else(day <10, paste0("0", day), as.character(day)))) %>%
   mutate(sampleID = paste0("CAD_", dateChar,"_", location, "_", timeOfDay)) %>%
+  mutate(location = if_else(location == "IN", "Inflow", "Outflow Reservoir")) %>%
   select(date, location, sampleID) %>%
   arrange(date)
 
@@ -51,8 +53,9 @@ synopticSampleIDs <- tibble(
          month = month(date), 
          day = day(date)) %>%
   mutate(dateChar = paste0(year, "0", month, if_else(day <10, paste0("0", day), as.character(day)))) %>%
-  mutate(sampleID = paste0("CAD_", dateChar,"_", flume)) %>%
-  select(date, flume, sampleID) %>%
+  mutate(sampleID = paste0("CAD_", dateChar,"_", flume), 
+         location = paste0("Flume ", flume)) %>%
+  select(date, location, flume, sampleID) %>%
   arrange(date)
 
 write.csv(synopticSampleIDs, file = "./sampleIDs/2021-09_Synoptic_SampleIDs.csv", row.names = FALSE)
@@ -103,7 +106,8 @@ nutrientIsotopeSampleIDs <- tibble(
   mutate(date = if_else(timepoint<10, as_date("2021-09-17"), as_date("2021-09-18"))) %>%
   mutate(dateChar = if_else(timepoint<10, "210917", "210918")) %>%
   mutate(ConcentrationSampleID = paste0("CAD_", dateChar,"_", flume, timepoint, "c", if_else(duplicate, "_d", "")),
-         sampleID = paste0("CAD_", dateChar,"_", flume, timepoint, "i", if_else(duplicate, "_d", ""))) %>%
+         sampleID = paste0("CAD_", dateChar,"_", flume, timepoint, "i", if_else(duplicate, "_d", "")), 
+         location = paste0("Flume ", flume)) %>%
   filter(!(sampleID %in% c("CAD_210917_I9i", "CAD_210917_J9i"))) %>%
   left_join(nitrateData, by = c("ConcentrationSampleID" = "sampleID" )) %>%
   mutate(OriginalNOx = NOx_ugN_L) %>%
@@ -120,7 +124,7 @@ nutrientIsotopeSampleIDs <- tibble(
   left_join(conductivities, by = "flume") %>%
   mutate(estimatedConductivity = if_else(timepoint == 0, preSlugConductivity_uS_cm, postSlugConductivity_uS_cm)) %>%
   mutate(Conductivity = paste0(estimatedConductivity, " uS/cm")) %>%
-  select(flume, timepoint, sampleID, NO3Concentration, enriched, enrichment, Conductivity, Amount, spiked, OriginalNOx) %>%
+  select(flume, location, timepoint, sampleID, NO3Concentration, enriched, enrichment, Conductivity, Amount, spiked, OriginalNOx) %>%
   arrange(flume, timepoint) 
 
 write.csv(nutrientIsotopeSampleIDs, file = "./sampleIDs/2021-09-17_Nutrient_Isotope_SampleIDs.csv", row.names = FALSE)
@@ -143,15 +147,17 @@ gasSampleIDs <- tibble(
   add_row(flume = rep("BL", times = 3),
           timepoint = c(1,2,3),
           duplicate = FALSE) %>%
-  left_join(expectedGasVals, by = "timepoint") %>%
+  # left_join(expectedGasVals, by = "timepoint") %>%
   mutate(date = if_else(timepoint<10, as_date("2021-09-17"), as_date("2021-09-18"))) %>%
   mutate(dateChar = if_else(timepoint<10, "210917", "210918")) %>%
-  mutate(sampleID = paste0("CAD_", dateChar,"_", flume, timepoint, "g", if_else(duplicate, "_d", "")))%>%
-  arrange(estimatedEnrichment_atomPerc, flume) %>%
-  mutate(enriched = if_else(timepoint == 0, "No", "Yes")) %>%
-  mutate(estimatedEnrichment_atomPerc = round(estimatedEnrichment_atomPerc, digits = 2)) %>%
-  mutate(estEnrich = if_else(timepoint > 0, paste0(estimatedEnrichment_atomPerc, "at-%"), "--")) %>%
-  select(date, flume, timepoint, enriched, estEnrich, sampleID) 
+  mutate(sampleID = paste0("CAD_", dateChar,"_", flume, timepoint, "g", if_else(duplicate, "_d", "")),
+         location = paste0("Flume ", flume))%>%
+  # arrange(estimatedEnrichment_atomPerc, flume) %>%
+  # mutate(enriched = if_else(timepoint == 0, "No", "Yes")) %>%
+  # mutate(estimatedEnrichment_atomPerc = round(estimatedEnrichment_atomPerc, digits = 2)) %>%
+  # mutate(estEnrich = if_else(timepoint > 0, paste0(estimatedEnrichment_atomPerc, "at-%"), "--")) %>%
+  # select(date, location, flume, timepoint, enriched, estEnrich, sampleID) 
+  select(date, location, flume, timepoint,sampleID) 
 
 write.csv(gasSampleIDs, file = "./sampleIDs/2021-09-17_Gas_SampleIDs.csv", row.names = FALSE)
 

@@ -1,8 +1,9 @@
-library(isoToolsR)
 # Objective: calculate masses of labeled and unlabeled nitrate needed in a 1 L 
 # slug solution to raise the total concentration in each flume by 220 ppb as N 
 # and to enrich the nitrate pool to 13,000 permil. Assume 10 mL will be added
 # into each flume, and that volume of water in each flume is 30 L. 
+
+library(isoToolsR)
 
 V_flume <- 30 # volume of water in flume, Liters
 V_slug <- 0.01 # volume of slug, Liters
